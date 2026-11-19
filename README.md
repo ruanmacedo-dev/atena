@@ -9,10 +9,11 @@ Cortador de clipes que roda no navegador. Escolha um vídeo, marque o melhor mom
 ## Como usar
 
 1. Clique em **Escolher vídeo**.
-2. Dê play, pare no começo do momento e clique em **Marcar início**.
-3. Pare no fim do momento e clique em **Marcar fim**.
-4. Em **Limite (MB)**, escreva o tamanho máximo que o arquivo pode ter.
-5. Clique em **Cortar e comprimir** e, quando terminar, em **Baixar o clipe**.
+2. Ache o começo do momento e clique em **Marcar início**. Para chegar lá, dê play, arraste a agulha branca da barra ou use **−5 s** e **+5 s**.
+3. Ache o fim do momento e clique em **Marcar fim**.
+4. Clique em **Tocar trecho** para conferir o corte antes de baixar.
+5. Em **Limite (MB)**, escreva o tamanho máximo que o arquivo pode ter.
+6. Clique em **Cortar e comprimir** e, quando terminar, em **Baixar o clipe**.
 
 ## O que ela faz por você
 

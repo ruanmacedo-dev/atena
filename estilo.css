@@ -139,7 +139,26 @@ button:disabled {
     border-color: var(--rosa-claro);
 }
 
+.controles {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
 
+.controles button:disabled {
+    cursor: not-allowed;
+}
+
+#tocarTrecho {
+    min-width: 130px;
+}
+
+@media (max-width: 560px) {
+    .controles {
+        margin-left: 0;
+    }
+}
 
 #escolher {
     position: absolute;
@@ -202,6 +221,12 @@ input[type="number"]:focus {
     background: var(--fundo);
     overflow: hidden;
     cursor: pointer;
+    touch-action: none;
+    user-select: none;
+}
+
+.trilha.arrastando {
+    cursor: grabbing;
 }
 
 .trecho {
@@ -220,6 +245,18 @@ input[type="number"]:focus {
     bottom: 0;
     width: 2px;
     margin-left: -1px;
+    background: var(--texto);
+}
+
+.agulha::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 10px;
+    height: 7px;
+    transform: translateX(-50%);
+    border-radius: 0 0 3px 3px;
     background: var(--texto);
 }
 

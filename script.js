@@ -20,10 +20,17 @@ const progresso = document.getElementById("progresso");
 const aviso = document.getElementById("aviso");
 const baixar = document.getElementById("baixar");
 const compativel = document.getElementById("compativel");
+const voltar5 = document.getElementById("voltar5");
+const avancar5 = document.getElementById("avancar5");
+const tocarTrecho = document.getElementById("tocarTrecho");
 
 let inicio = 0;
 let fim = 0;
 let arquivo = null;
+let tocandoTrecho = false;
+let pulandoParaInicio = false;
+let arrastando = false;
+let estavaTocando = false;
 
 const ENDERECO_DA_BIBLIOTECA = "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs";
 
@@ -48,12 +55,62 @@ video.addEventListener("loadedmetadata", function () {
 
 video.addEventListener("timeupdate", moverAgulha);
 
-trilha.addEventListener("click", function (evento) {
+video.addEventListener("play", function () {
+    requestAnimationFrame(acompanhar);
+});
+
+video.addEventListener("pause", pararTrecho);
+
+video.addEventListener("seeking", function () {
+    if (pulandoParaInicio) {
+        pulandoParaInicio = false;
+        return;
+    }
+    pararTrecho();
+});
+
+trilha.addEventListener("pointerdown", function (evento) {
     if (!(video.duration > 0)) {
         return;
     }
-    const caixa = trilha.getBoundingClientRect();
-    video.currentTime = (evento.clientX - caixa.left) / caixa.width * video.duration;
+    pararTrecho();
+    arrastando = true;
+    estavaTocando = !video.paused;
+    video.pause();
+    trilha.setPointerCapture(evento.pointerId);
+    trilha.classList.add("arrastando");
+    irPara(segundoDoPonteiro(evento));
+});
+
+trilha.addEventListener("pointermove", function (evento) {
+    if (arrastando) {
+        irPara(segundoDoPonteiro(evento));
+    }
+});
+
+trilha.addEventListener("pointerup", soltarAgulha);
+trilha.addEventListener("pointercancel", soltarAgulha);
+
+voltar5.addEventListener("click", function () {
+    pararTrecho();
+    irPara(video.currentTime - 5);
+});
+
+avancar5.addEventListener("click", function () {
+    pararTrecho();
+    irPara(video.currentTime + 5);
+});
+
+tocarTrecho.addEventListener("click", function () {
+    if (tocandoTrecho) {
+        video.pause();
+        return;
+    }
+    pulandoParaInicio = true;
+    video.currentTime = inicio;
+    tocandoTrecho = true;
+    tocarTrecho.textContent = "Parar";
+    video.play().catch(pararTrecho);
 });
 
 marcarInicio.addEventListener("click", function () {
@@ -92,7 +149,48 @@ function moverAgulha() {
         return;
     }
     agulha.hidden = false;
-    agulha.style.left = porcento(video.currentTime);
+    if (!arrastando) {
+        agulha.style.left = porcento(video.currentTime);
+    }
+}
+
+function acompanhar() {
+    if (video.paused) {
+        return;
+    }
+    moverAgulha();
+    if (tocandoTrecho && video.currentTime >= fim) {
+        video.pause();
+        return;
+    }
+    requestAnimationFrame(acompanhar);
+}
+
+function irPara(segundos) {
+    const destino = Math.min(Math.max(segundos, 0), video.duration);
+    video.currentTime = destino;
+    agulha.style.left = porcento(destino);
+}
+
+function segundoDoPonteiro(evento) {
+    const caixa = trilha.getBoundingClientRect();
+    return (evento.clientX - caixa.left) / caixa.width * video.duration;
+}
+
+function soltarAgulha() {
+    if (!arrastando) {
+        return;
+    }
+    arrastando = false;
+    trilha.classList.remove("arrastando");
+    if (estavaTocando) {
+        video.play();
+    }
+}
+
+function pararTrecho() {
+    tocandoTrecho = false;
+    tocarTrecho.textContent = "Tocar trecho";
 }
 
 function mostrarCorte() {
@@ -136,6 +234,13 @@ function mostrarCorte() {
     }
     for (let i = 0; i < barrinhas.length; i++) {
         barrinhas[i].classList.toggle("acesa", i < nivel);
+    }
+
+    voltar5.disabled = !temVideo;
+    avancar5.disabled = !temVideo;
+    tocarTrecho.disabled = !corteValido;
+    if (!corteValido && tocandoTrecho) {
+        video.pause();
     }
 
     moverAgulha();

@@ -1,0 +1,349 @@
+:root {
+    color-scheme: dark;
+    --fundo: #26292e;
+    --cartao: #202328;
+    --botao: #2f343a;
+    --borda: #3f454d;
+    --texto: #eceff4;
+    --texto-apagado: #a1a9b1;
+    --rosa: #ff6376;
+    --rosa-claro: #ff8494;
+    --verde: #a6e3a1;
+    --letra-escura: #1f2226;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--fundo);
+    color: var(--texto);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    line-height: 1.5;
+}
+
+::selection {
+    background: var(--rosa);
+    color: var(--letra-escura);
+}
+
+main {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 48px 16px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 2rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+h1 span {
+    color: var(--rosa);
+}
+
+p {
+    margin: 0;
+}
+
+.subtitulo {
+    margin-top: 6px;
+    color: var(--texto-apagado);
+}
+
+p:empty {
+    display: none;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+.linha {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+}
+
+.cartao {
+    background: var(--cartao);
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+
+video {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #16181b;
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+}
+
+button,
+.botao {
+    font: inherit;
+    font-size: 0.95rem;
+    padding: 9px 16px;
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    background: var(--botao);
+    color: var(--texto);
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+button:hover,
+.botao:hover {
+    border-color: var(--rosa);
+}
+
+button:active,
+.botao:active {
+    transform: translateY(1px);
+}
+
+button:focus-visible,
+#escolher:focus-visible + .botao {
+    outline: 2px solid var(--rosa);
+    outline-offset: 2px;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: progress;
+}
+
+.principal {
+    background: var(--rosa);
+    border-color: var(--rosa);
+    color: var(--letra-escura);
+    font-weight: 600;
+}
+
+.principal:hover {
+    background: var(--rosa-claro);
+    border-color: var(--rosa-claro);
+}
+
+
+
+#escolher {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.campo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--texto-apagado);
+}
+
+input[type="number"] {
+    font: inherit;
+    width: 80px;
+    padding: 8px 10px;
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    background: var(--fundo);
+    color: var(--texto);
+}
+
+.opcao {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    align-self: flex-start;
+    color: var(--texto-apagado);
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--rosa);
+    cursor: pointer;
+}
+
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--rosa);
+}
+
+#info,
+#aviso {
+    color: var(--texto-apagado);
+    font-size: 0.95rem;
+}
+
+.trilha {
+    position: relative;
+    height: 30px;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    background: var(--fundo);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.trecho {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    min-width: 3px;
+    background: rgba(255, 99, 118, 0.3);
+    border-left: 3px solid var(--rosa);
+    border-right: 3px solid var(--rosa);
+}
+
+.agulha {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--texto);
+}
+
+.tempos {
+    display: flex;
+    justify-content: space-between;
+    margin-top: -6px;
+    color: var(--texto-apagado);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.placas {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+@media (max-width: 560px) {
+    .placas {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.placa {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    background: var(--fundo);
+}
+
+.rotulo {
+    color: var(--texto-apagado);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.placa strong {
+    font-size: 1.35rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.valor-e-barras {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.barrinhas {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 18px;
+}
+
+.barrinhas i {
+    width: 5px;
+    border-radius: 2px;
+    background: var(--borda);
+}
+
+.barrinhas i:nth-child(1) { height: 25%; }
+.barrinhas i:nth-child(2) { height: 50%; }
+.barrinhas i:nth-child(3) { height: 75%; }
+.barrinhas i:nth-child(4) { height: 100%; }
+
+.barrinhas i.acesa {
+    background: var(--rosa);
+}
+
+.original strong {
+    color: var(--verde);
+}
+
+.original .barrinhas i.acesa {
+    background: var(--verde);
+}
+
+#alerta {
+    color: var(--rosa);
+    font-size: 0.95rem;
+}
+
+progress {
+    appearance: none;
+    -webkit-appearance: none;
+    display: block;
+    width: 100%;
+    height: 8px;
+    border: none;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--botao);
+}
+
+progress::-webkit-progress-bar {
+    background: var(--botao);
+}
+
+progress::-webkit-progress-value {
+    background: var(--rosa);
+    transition: width 0.2s;
+}
+
+progress::-moz-progress-bar {
+    background: var(--rosa);
+}
+
+#baixar {
+    align-self: flex-start;
+    padding: 10px 18px;
+    border-radius: 10px;
+    background: var(--verde);
+    color: var(--letra-escura);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+#baixar:hover {
+    filter: brightness(1.08);
+}

@@ -36,6 +36,7 @@ Feita para navegadores baseados no Chromium (Chrome, Edge, Vivaldi, Brave), atua
 | `index.html` | o que aparece na tela |
 | `estilo.css` | as cores e o visual |
 | `script.js` | o que acontece quando você clica |
+| `icone.svg`, `icone-32.png`, `icone-180.png` | o ícone da aba e da tela inicial do celular |
 | `tela.png` | a imagem deste README |
 
 ## Feito com

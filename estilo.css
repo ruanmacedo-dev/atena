@@ -40,22 +40,28 @@ main {
 
 h1 {
     margin: 0;
-    font-size: 2rem;
-    line-height: 1.2;
+    font-size: 2.4rem;
+    line-height: 1.1;
     letter-spacing: -0.02em;
-}
-
-h1 span {
-    color: var(--rosa);
 }
 
 p {
     margin: 0;
 }
 
+.sobrenome {
+    margin-top: 4px;
+    color: var(--rosa);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
 .subtitulo {
-    margin-top: 6px;
+    margin-top: 10px;
     color: var(--texto-apagado);
+    font-size: 0.95rem;
 }
 
 p:empty {

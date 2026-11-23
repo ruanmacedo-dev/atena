@@ -33,6 +33,9 @@ let arrastando = false;
 let estavaTocando = false;
 
 const ENDERECO_DA_BIBLIOTECA = "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs";
+const SEGUNDOS_ENTRE_QUADROS_CHAVE = 10;
+const QUANTIZER_DA_AMOSTRA = 160;
+const QUANTIZER_MINIMO = 80;
 
 escolher.addEventListener("change", function () {
     if (escolher.files.length === 0) {
@@ -228,9 +231,10 @@ function mostrarCorte() {
         placaQualidade.classList.add("original");
         nivel = 4;
     } else {
-        const altura = escolherAltura(mesadaDaEscada(codecDesejado()));
-        qualidade.textContent = altura + "p";
-        nivel = [360, 480, 720, 1080].indexOf(altura) + 1;
+        const degrau = escolherDegrau(mesadaDaEscada(codecDesejado()));
+        const ladoMenor = Math.min(video.videoWidth, video.videoHeight);
+        qualidade.textContent = Math.min(degrau.altura, ladoMenor) + "p" + degrau.quadros;
+        nivel = degrau.nivel;
     }
     for (let i = 0; i < barrinhas.length; i++) {
         barrinhas[i].classList.toggle("acesa", i < nivel);
@@ -258,15 +262,17 @@ function cabeSemComprimir() {
     return pesoOriginalDoCorte() <= limiteEmBytes() * 0.9;
 }
 
-function escolherAltura(mesada) {
-    if (mesada >= 1) {
-        return 1080;
-    } else if (mesada >= 0.5) {
-        return 720;
-    } else if (mesada >= 0.25) {
-        return 480;
+function escolherDegrau(mesada) {
+    if (mesada >= 1.5) {
+        return { altura: 1080, quadros: 60, nivel: 4 };
+    } else if (mesada >= 0.36) {
+        return { altura: 1080, quadros: 30, nivel: 3 };
+    } else if (mesada >= 0.2) {
+        return { altura: 720, quadros: 30, nivel: 2 };
+    } else if (mesada >= 0.12) {
+        return { altura: 480, quadros: 30, nivel: 1 };
     } else {
-        return 360;
+        return { altura: 360, quadros: 30, nivel: 1 };
     }
 }
 
@@ -282,7 +288,7 @@ function mesadaDaEscada(codec) {
     if (codec === "av1") {
         return mesada * 2;
     }
-    return mesada;
+    return mesada * 0.6;
 }
 
 comprimir.addEventListener("click", async function () {
@@ -328,7 +334,6 @@ comprimir.addEventListener("click", async function () {
 
 async function cortarEComprimir() {
     const mb = await import(ENDERECO_DA_BIBLIOTECA);
-    const duracao = fim - inicio;
     const alvo = limiteEmBytes() * 0.95;
 
     if (cabeSemComprimir()) {
@@ -349,12 +354,190 @@ async function cortarEComprimir() {
     if (!(await mb.canEncodeVideo(codec))) {
         throw new Error("este navegador não consegue comprimir vídeo. Use o Chrome ou o Edge atualizados.");
     }
-    let nomeDoCodec = "AV1";
+
+    const original = await lerOriginal(mb);
+    const degrau = escolherDegrau(mesadaDaEscada(codec));
+    const pular = Math.max(1, Math.round(original.quadros / degrau.quadros));
+    const plano = {
+        codec: codec,
+        altura: degrau.altura,
+        pular: pular,
+        quadros: original.quadros / pular,
+    };
+
+    let nome = Math.min(degrau.altura, original.ladoMenor) + "p" + Math.round(plano.quadros);
     if (codec === "avc") {
-        nomeDoCodec = "H.264";
+        nome = nome + " H.264";
+    } else {
+        nome = nome + " AV1";
     }
 
-    const altura = escolherAltura(mesadaDaEscada(codec));
+    const qualidadeFixa = new mb.Quality({ quantizer: QUANTIZER_DA_AMOSTRA });
+    let feito;
+    if (await mb.canEncodeVideo(codec, { quality: qualidadeFixa })) {
+        feito = await comprimirComQualidadeFixa(mb, plano, original, nome);
+    } else {
+        feito = await comprimirComBitrate(mb, plano, nome);
+    }
+    return { dados: feito.dados, texto: nome, semSom: feito.semSom };
+}
+
+async function lerOriginal(mb) {
+    const entrada = new mb.Input({ source: new mb.BlobSource(arquivo), formats: mb.ALL_FORMATS });
+    const imagem = await entrada.getPrimaryVideoTrack();
+    if (imagem === null) {
+        throw new Error("não consegui ler a imagem deste vídeo.");
+    }
+    const estatisticas = await imagem.computePacketStats(120);
+    let somPorSegundo = 0;
+    const som = await entrada.getPrimaryAudioTrack();
+    if (som !== null) {
+        const estatisticasDoSom = await som.computePacketStats(200);
+        somPorSegundo = estatisticasDoSom.averageBitrate / 8;
+    }
+    return {
+        quadros: Math.min(Math.max(estatisticas.averagePacketRate, 10), 240),
+        ladoMenor: Math.min(imagem.displayWidth, imagem.displayHeight),
+        somPorSegundo: somPorSegundo,
+    };
+}
+
+async function comprimirComQualidadeFixa(mb, plano, original, nome) {
+    const duracao = fim - inicio;
+    const alvo = limiteEmBytes() * 0.95;
+    const mira = limiteEmBytes() * 0.87;
+    let resto = original.somPorSegundo * duracao;
+    if (resto >= mira) {
+        throw new Error("só o som do trecho já passa do limite. Faça um corte menor.");
+    }
+
+    const estimativa = await pesarAmostra(mb, plano);
+    let passo = 0.0215;
+    if (estimativa > mira - resto) {
+        passo = 0.019;
+    }
+    let quantizer = QUANTIZER_DA_AMOSTRA + Math.log(estimativa / (mira - resto)) / passo;
+
+    let melhor = null;
+    let anterior = null;
+    for (let tentativa = 1; tentativa <= 4; tentativa++) {
+        quantizer = Math.min(Math.max(Math.round(quantizer), QUANTIZER_MINIMO), 255);
+        if (tentativa === 1) {
+            aviso.textContent = "Comprimindo em " + nome + "...";
+        } else {
+            aviso.textContent = "Comprimindo em " + nome + " (ajuste " + tentativa + " de 4)...";
+        }
+        const feito = await converter(mb, plano, { quantizer: quantizer });
+        const tamanho = feito.dados.byteLength;
+        const imagem = (await pesarImagem(mb, feito.dados)).bytes;
+        resto = tamanho - imagem;
+
+        if (tamanho <= alvo) {
+            if (melhor === null || tamanho > melhor.dados.byteLength) {
+                melhor = feito;
+            }
+            if (tamanho >= limiteEmBytes() * 0.75 || quantizer === QUANTIZER_MINIMO) {
+                break;
+            }
+        } else if (quantizer === 255) {
+            break;
+        }
+
+        if (anterior !== null && anterior.quantizer !== quantizer) {
+            passo = Math.log(anterior.imagem / imagem) / (quantizer - anterior.quantizer);
+            passo = Math.min(Math.max(passo, 0.01), 0.04);
+        }
+        anterior = { quantizer: quantizer, imagem: imagem };
+
+        let proximo = quantizer + Math.log(imagem / (mira - resto)) / passo;
+        if (tamanho > alvo) {
+            proximo = Math.max(proximo, quantizer + 2);
+        }
+        quantizer = proximo;
+    }
+    if (melhor === null) {
+        throw new Error("não consegui deixar o clipe abaixo do limite. Faça um corte menor.");
+    }
+    return melhor;
+}
+
+async function pesarAmostra(mb, plano) {
+    const duracao = fim - inicio;
+    const fatias = await pesarFatiasDoOriginal(mb);
+    const pedacos = Math.min(Math.max(Math.round(duracao / 3), 2), 20);
+    const soma = { comprimido: 0, original: 0, chaves: 0, quantasChaves: 0 };
+
+    for (let i = 0; i < pedacos; i++) {
+        aviso.textContent = "Medindo o vídeo (amostra " + (i + 1) + " de " + pedacos + ")...";
+        const fatia = Math.floor((i + 0.5) * fatias.length / pedacos);
+        const trecho = { de: inicio + fatia / 2, ate: inicio + (fatia + 1) / 2 };
+        const feito = await converter(mb, plano, { quantizer: QUANTIZER_DA_AMOSTRA }, trecho);
+        const peso = await pesarImagem(mb, feito.dados);
+        let porQuadro = peso.chaves;
+        if (peso.quantosOutros > 0) {
+            porQuadro = peso.outros / peso.quantosOutros;
+        }
+        soma.comprimido += porQuadro * (trecho.ate - trecho.de) * plano.quadros;
+        soma.original += fatias[fatia];
+        soma.chaves += peso.chaves;
+        soma.quantasChaves += peso.quantasChaves;
+        progresso.value = (i + 1) / pedacos;
+    }
+
+    let todasAsFatias = 0;
+    for (const peso of fatias) {
+        todasAsFatias += peso;
+    }
+    const chaves = Math.ceil(duracao / SEGUNDOS_ENTRE_QUADROS_CHAVE);
+    const porChave = soma.chaves / soma.quantasChaves;
+    return soma.comprimido / soma.original * todasAsFatias + porChave * chaves;
+}
+
+async function pesarFatiasDoOriginal(mb) {
+    const entrada = new mb.Input({ source: new mb.BlobSource(arquivo), formats: mb.ALL_FORMATS });
+    const faixa = await entrada.getPrimaryVideoTrack();
+    const leitor = new mb.EncodedPacketSink(faixa);
+    const fatias = [];
+    for (let i = 0; i < (fim - inicio) * 2; i++) {
+        fatias.push(1);
+    }
+    let primeiro = await leitor.getKeyPacket(inicio, { metadataOnly: true });
+    if (primeiro === null) {
+        primeiro = undefined;
+    }
+    for await (const pacote of leitor.packets(primeiro, undefined, { metadataOnly: true })) {
+        if (pacote.timestamp >= fim + 1) {
+            break;
+        }
+        const posicao = Math.floor((pacote.timestamp - inicio) * 2);
+        if (pacote.type === "delta" && posicao >= 0 && posicao < fatias.length) {
+            fatias[posicao] += pacote.byteLength;
+        }
+    }
+    return fatias;
+}
+
+async function pesarImagem(mb, dados) {
+    const leitura = new mb.Input({ source: new mb.BufferSource(dados), formats: mb.ALL_FORMATS });
+    const faixa = await leitura.getPrimaryVideoTrack();
+    const leitor = new mb.EncodedPacketSink(faixa);
+    const peso = { chaves: 0, quantasChaves: 0, outros: 0, quantosOutros: 0, bytes: 0 };
+    for await (const pacote of leitor.packets(undefined, undefined, { metadataOnly: true })) {
+        if (pacote.type === "key") {
+            peso.chaves += pacote.byteLength;
+            peso.quantasChaves++;
+        } else {
+            peso.outros += pacote.byteLength;
+            peso.quantosOutros++;
+        }
+    }
+    peso.bytes = peso.chaves + peso.outros;
+    return peso;
+}
+
+async function comprimirComBitrate(mb, plano, nome) {
+    const duracao = fim - inicio;
+    const alvo = limiteEmBytes() * 0.95;
     let bitsPorSegundo = alvo * 8 / duracao - 192000;
 
     let melhor = null;
@@ -362,8 +545,8 @@ async function cortarEComprimir() {
         if (bitsPorSegundo < 150000) {
             break;
         }
-        aviso.textContent = "Comprimindo em " + altura + "p " + nomeDoCodec + " (tentativa " + tentativa + " de 4)...";
-        const feito = await converter(mb, { codec: codec, altura: altura, bitsPorSegundo: bitsPorSegundo });
+        aviso.textContent = "Comprimindo em " + nome + " (tentativa " + tentativa + " de 4)...";
+        const feito = await converter(mb, plano, { bitsPorSegundo: bitsPorSegundo });
         const tamanho = feito.dados.byteLength;
         if (tamanho <= alvo) {
             if (melhor === null || tamanho > melhor.dados.byteLength) {
@@ -378,10 +561,10 @@ async function cortarEComprimir() {
     if (melhor === null) {
         throw new Error("não consegui deixar o clipe abaixo do limite. Faça um corte menor.");
     }
-    return { dados: melhor.dados, texto: altura + "p " + nomeDoCodec, semSom: melhor.semSom };
+    return melhor;
 }
 
-async function converter(mb, config) {
+async function converter(mb, plano, taxa, trecho) {
     const entrada = new mb.Input({ source: new mb.BlobSource(arquivo), formats: mb.ALL_FORMATS });
     const saida = new mb.Output({
         format: new mb.Mp4OutputFormat({ fastStart: "in-memory" }),
@@ -394,33 +577,44 @@ async function converter(mb, config) {
         trim: { start: inicio, end: fim },
         showWarnings: false,
     };
+    if (trecho !== undefined) {
+        opcoes.trim = { start: trecho.de, end: trecho.ate };
+        opcoes.audio = { discard: true };
+    }
 
-    if (config === null) {
+    if (plano === null) {
         opcoes.copy = { mode: "forced", boundaryTolerance: 3 };
     } else {
-        opcoes.video = async function (faixa) {
+        opcoes.video = function (faixa) {
             const largura = faixa.displayWidth;
             const alturaOriginal = faixa.displayHeight;
             const deitado = largura >= alturaOriginal;
             const ladoMenor = deitado ? alturaOriginal : largura;
             const escolha = {
-                codec: config.codec,
+                codec: plano.codec,
                 forceTranscode: true,
+                keyFrameInterval: SEGUNDOS_ENTRE_QUADROS_CHAVE,
             };
-            if (ladoMenor > config.altura) {
-                const fator = config.altura / ladoMenor;
+            if (ladoMenor > plano.altura) {
+                const fator = plano.altura / ladoMenor;
                 escolha.width = Math.round(largura * fator / 2) * 2;
                 escolha.height = Math.round(alturaOriginal * fator / 2) * 2;
                 escolha.fit = "fill";
             }
-            const estatisticas = await faixa.computePacketStats(120);
-            let quadros = Math.min(Math.max(estatisticas.averagePacketRate, 10), 240);
-            if (config.altura <= 480 && quadros > 31) {
-                escolha.frameRate = 30;
-                quadros = 30;
+            if (plano.pular > 1) {
+                let contador = 0;
+                escolha.process = function (quadro) {
+                    const manter = contador % plano.pular === 0;
+                    contador++;
+                    return manter ? quadro : null;
+                };
             }
-            const corrigida = config.bitsPorSegundo * 30 / quadros;
-            escolha.quality = new mb.Quality({ bitrate: Math.round(corrigida) });
+            if (taxa.quantizer !== undefined) {
+                escolha.quality = new mb.Quality({ quantizer: taxa.quantizer });
+            } else {
+                const corrigida = taxa.bitsPorSegundo * 30 / plano.quadros;
+                escolha.quality = new mb.Quality({ bitrate: Math.round(corrigida) });
+            }
             return escolha;
         };
     }
@@ -428,15 +622,17 @@ async function converter(mb, config) {
     const conversao = await mb.Conversion.init(opcoes);
     const perdeuImagem = conversao.discardedTracks.some(function (d) { return d.track.isVideoTrack(); });
     const perdeuSom = conversao.discardedTracks.some(function (d) { return d.track.isAudioTrack(); });
-    if (config === null && (!conversao.isValid || conversao.discardedTracks.length > 0)) {
+    if (plano === null && (!conversao.isValid || conversao.discardedTracks.length > 0)) {
         return null;
     }
     if (!conversao.isValid || perdeuImagem) {
         throw new Error("não consegui ler a imagem deste vídeo.");
     }
-    conversao.onProgress = function (parte) {
-        progresso.value = parte;
-    };
+    if (trecho === undefined) {
+        conversao.onProgress = function (parte) {
+            progresso.value = parte;
+        };
+    }
     await conversao.execute();
     return { dados: saida.target.buffer, semSom: perdeuSom };
 }

@@ -21,6 +21,7 @@ Cortador de clipes que roda no navegador. Escolha um vídeo, marque o melhor mom
 - **Se não cabe**, ela comprime com a mesma qualidade do começo ao fim, sem borrar as cenas de ação. Antes, comprime uns pedacinhos do trecho para medir o vídeo e acertar o tamanho já na primeira vez.
 - **Escolhe sozinha a resolução e os quadros por segundo.** Clipes curtos saem em 1080p com 60 quadros por segundo. Nos mais longos ela passa para 30 quadros por segundo, que deixam cada imagem mais nítida no mesmo tamanho de arquivo. Só em trechos bem longos ela desce para 720p, 480p ou 360p. A plaquinha **Qualidade** mostra a previsão antes de você clicar.
 - **Usa AV1**, que entrega imagem melhor no mesmo tamanho de arquivo. Se for mandar para alguém com iPhone antigo, marque **Compatível com iPhone antigo**: o clipe sai em H.264, que toca em qualquer aparelho, com qualidade um pouco menor.
+- **Deixa o som mais leve.** Junto com o AV1, o som vai em Opus, que soa igual e ocupa metade do espaço. O que sobra vai para a imagem. Com **Compatível com iPhone antigo** marcado, o som fica como no original.
 
 ## Seu vídeo não sai do seu computador
 

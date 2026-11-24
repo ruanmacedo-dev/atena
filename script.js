@@ -36,6 +36,9 @@ const ENDERECO_DA_BIBLIOTECA = "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/d
 const SEGUNDOS_ENTRE_QUADROS_CHAVE = 10;
 const QUANTIZER_DA_AMOSTRA = 160;
 const QUANTIZER_MINIMO = 80;
+const QUANTIZER_MAXIMO = 252;
+const DEGRAU_DO_QUANTIZER = 4;
+const BITRATE_DO_SOM_OPUS = 96000;
 
 escolher.addEventListener("change", function () {
     if (escolher.files.length === 0) {
@@ -363,6 +366,7 @@ async function cortarEComprimir() {
         altura: degrau.altura,
         pular: pular,
         quadros: original.quadros / pular,
+        somOpus: await valeTrocarSomPorOpus(mb, codec, original),
     };
 
     let nome = Math.min(degrau.altura, original.ladoMenor) + "p" + Math.round(plano.quadros);
@@ -402,11 +406,24 @@ async function lerOriginal(mb) {
     };
 }
 
+async function valeTrocarSomPorOpus(mb, codec, original) {
+    if (codec !== "av1") {
+        return false;
+    }
+    if (original.somPorSegundo * 8 < BITRATE_DO_SOM_OPUS * 1.2) {
+        return false;
+    }
+    return await mb.canEncodeAudio("opus", { bitrate: BITRATE_DO_SOM_OPUS });
+}
+
 async function comprimirComQualidadeFixa(mb, plano, original, nome) {
     const duracao = fim - inicio;
     const alvo = limiteEmBytes() * 0.95;
-    const mira = limiteEmBytes() * 0.87;
+    const mira = limiteEmBytes() * 0.91;
     let resto = original.somPorSegundo * duracao;
+    if (plano.somOpus) {
+        resto = BITRATE_DO_SOM_OPUS / 8 * duracao;
+    }
     if (resto >= mira) {
         throw new Error("só o som do trecho já passa do limite. Faça um corte menor.");
     }
@@ -416,12 +433,13 @@ async function comprimirComQualidadeFixa(mb, plano, original, nome) {
     if (estimativa > mira - resto) {
         passo = 0.019;
     }
-    let quantizer = QUANTIZER_DA_AMOSTRA + Math.log(estimativa / (mira - resto)) / passo;
+    let quantizer = limitarQuantizer(QUANTIZER_DA_AMOSTRA + Math.log(estimativa / (mira - resto)) / passo);
 
     let melhor = null;
+    let menorQueCabe = Infinity;
+    let maiorQueEstoura = -Infinity;
     let anterior = null;
     for (let tentativa = 1; tentativa <= 4; tentativa++) {
-        quantizer = Math.min(Math.max(Math.round(quantizer), QUANTIZER_MINIMO), 255);
         if (tentativa === 1) {
             aviso.textContent = "Comprimindo em " + nome + "...";
         } else {
@@ -432,26 +450,31 @@ async function comprimirComQualidadeFixa(mb, plano, original, nome) {
         const imagem = (await pesarImagem(mb, feito.dados)).bytes;
         resto = tamanho - imagem;
 
-        if (tamanho <= alvo) {
-            if (melhor === null || tamanho > melhor.dados.byteLength) {
-                melhor = feito;
-            }
-            if (tamanho >= limiteEmBytes() * 0.75 || quantizer === QUANTIZER_MINIMO) {
-                break;
-            }
-        } else if (quantizer === 255) {
-            break;
-        }
-
-        if (anterior !== null && anterior.quantizer !== quantizer) {
+        if (anterior !== null) {
             passo = Math.log(anterior.imagem / imagem) / (quantizer - anterior.quantizer);
             passo = Math.min(Math.max(passo, 0.01), 0.04);
         }
         anterior = { quantizer: quantizer, imagem: imagem };
 
-        let proximo = quantizer + Math.log(imagem / (mira - resto)) / passo;
-        if (tamanho > alvo) {
-            proximo = Math.max(proximo, quantizer + 2);
+        if (tamanho <= alvo) {
+            if (melhor === null || tamanho > melhor.dados.byteLength) {
+                melhor = feito;
+            }
+            menorQueCabe = Math.min(menorQueCabe, quantizer);
+            if (tamanho >= limiteEmBytes() * 0.82 || quantizer === QUANTIZER_MINIMO) {
+                break;
+            }
+        } else {
+            maiorQueEstoura = Math.max(maiorQueEstoura, quantizer);
+            if (quantizer === QUANTIZER_MAXIMO) {
+                break;
+            }
+        }
+
+        let proximo = limitarQuantizer(quantizer + Math.log(imagem / (mira - resto)) / passo);
+        proximo = Math.min(Math.max(proximo, maiorQueEstoura + 0.5), menorQueCabe - 0.5);
+        if (proximo <= maiorQueEstoura || proximo >= menorQueCabe) {
+            break;
         }
         quantizer = proximo;
     }
@@ -459,6 +482,10 @@ async function comprimirComQualidadeFixa(mb, plano, original, nome) {
         throw new Error("não consegui deixar o clipe abaixo do limite. Faça um corte menor.");
     }
     return melhor;
+}
+
+function limitarQuantizer(quantizer) {
+    return Math.min(Math.max(quantizer, QUANTIZER_MINIMO), QUANTIZER_MAXIMO);
 }
 
 async function pesarAmostra(mb, plano) {
@@ -552,7 +579,7 @@ async function comprimirComBitrate(mb, plano, nome) {
             if (melhor === null || tamanho > melhor.dados.byteLength) {
                 melhor = feito;
             }
-            if (tamanho >= alvo * 0.85) {
+            if (tamanho >= limiteEmBytes() * 0.82) {
                 break;
             }
         }
@@ -580,6 +607,12 @@ async function converter(mb, plano, taxa, trecho) {
     if (trecho !== undefined) {
         opcoes.trim = { start: trecho.de, end: trecho.ate };
         opcoes.audio = { discard: true };
+    } else if (plano !== null && plano.somOpus) {
+        opcoes.audio = {
+            codec: "opus",
+            quality: new mb.Quality({ bitrate: BITRATE_DO_SOM_OPUS }),
+            forceTranscode: true,
+        };
     }
 
     if (plano === null) {
@@ -601,16 +634,35 @@ async function converter(mb, plano, taxa, trecho) {
                 escolha.height = Math.round(alturaOriginal * fator / 2) * 2;
                 escolha.fit = "fill";
             }
-            if (plano.pular > 1) {
+            let quantizerGrosso = 0;
+            let parteFina = 0;
+            if (taxa.quantizer !== undefined) {
+                quantizerGrosso = Math.ceil(taxa.quantizer / DEGRAU_DO_QUANTIZER) * DEGRAU_DO_QUANTIZER;
+                parteFina = (quantizerGrosso - taxa.quantizer) / DEGRAU_DO_QUANTIZER;
+            }
+            if (plano.pular > 1 || parteFina > 0) {
                 let contador = 0;
+                let mantidos = 0;
                 escolha.process = function (quadro) {
                     const manter = contador % plano.pular === 0;
                     contador++;
-                    return manter ? quadro : null;
+                    if (!manter) {
+                        return null;
+                    }
+                    if (parteFina > 0) {
+                        const fino = Math.floor((mantidos + 1) * parteFina) > Math.floor(mantidos * parteFina);
+                        let quantizer = quantizerGrosso;
+                        if (fino) {
+                            quantizer = quantizerGrosso - DEGRAU_DO_QUANTIZER;
+                        }
+                        quadro.setEncodeOptions({ [plano.codec]: { quantizer: quantizer } });
+                    }
+                    mantidos++;
+                    return quadro;
                 };
             }
             if (taxa.quantizer !== undefined) {
-                escolha.quality = new mb.Quality({ quantizer: taxa.quantizer });
+                escolha.quality = new mb.Quality({ quantizer: quantizerGrosso });
             } else {
                 const corrigida = taxa.bitsPorSegundo * 30 / plano.quadros;
                 escolha.quality = new mb.Quality({ bitrate: Math.round(corrigida) });

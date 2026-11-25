@@ -19,7 +19,7 @@ const comprimir = document.getElementById("comprimir");
 const progresso = document.getElementById("progresso");
 const aviso = document.getElementById("aviso");
 const baixar = document.getElementById("baixar");
-const compativel = document.getElementById("compativel");
+const formatos = document.querySelectorAll('input[name="formato"]');
 const voltar5 = document.getElementById("voltar5");
 const avancar5 = document.getElementById("avancar5");
 const tocarTrecho = document.getElementById("tocarTrecho");
@@ -39,6 +39,11 @@ const QUANTIZER_MINIMO = 80;
 const QUANTIZER_MAXIMO = 252;
 const DEGRAU_DO_QUANTIZER = 4;
 const BITRATE_DO_SOM_OPUS = 96000;
+const SEGUNDOS_DE_FOLGA_DO_CORTE_SEM_COMPRIMIR = 3;
+
+let leituraDoVideo = null;
+let videoLido = null;
+let lendoVideo = false;
 
 escolher.addEventListener("change", function () {
     if (escolher.files.length === 0) {
@@ -47,12 +52,32 @@ escolher.addEventListener("change", function () {
     arquivo = escolher.files[0];
     video.src = URL.createObjectURL(arquivo);
     info.textContent = arquivo.name + " - " + Math.trunc(arquivo.size / 1024 / 1024) + " MB";
+    lerVideoEscolhido();
     inicio = 0;
     fim = 0;
     aviso.textContent = "";
     baixar.hidden = true;
     mostrarCorte();
 });
+
+function lerVideoEscolhido() {
+    const escolhido = arquivo;
+    videoLido = null;
+    lendoVideo = true;
+    leituraDoVideo = lerOriginal(escolhido);
+    leituraDoVideo.then(function (lido) {
+        if (escolhido === arquivo) {
+            videoLido = lido;
+        }
+    }).catch(function (erro) {
+        console.error(erro);
+    }).finally(function () {
+        if (escolhido === arquivo) {
+            lendoVideo = false;
+            mostrarCorte();
+        }
+    });
+}
 
 video.addEventListener("loadedmetadata", function () {
     total.textContent = formatarTempo(Math.trunc(video.duration));
@@ -130,7 +155,9 @@ marcarFim.addEventListener("click", function () {
 });
 
 limite.addEventListener("input", mostrarCorte);
-compativel.addEventListener("change", mostrarCorte);
+for (const formato of formatos) {
+    formato.addEventListener("change", mostrarCorte);
+}
 
 function formatarTempo(segundos) {
     const minutos = Math.floor(segundos / 60);
@@ -229,14 +256,17 @@ function mostrarCorte() {
     placaQualidade.classList.remove("original");
     if (!corteValido) {
         qualidade.textContent = "–";
-    } else if (cabeSemComprimir()) {
+    } else if (lendoVideo) {
+        qualidade.textContent = "…";
+    } else if (videoLido === null) {
+        qualidade.textContent = "–";
+    } else if (cabeSemComprimir(videoLido)) {
         qualidade.textContent = "Original";
         placaQualidade.classList.add("original");
         nivel = 4;
     } else {
         const degrau = escolherDegrau(mesadaDaEscada(codecDesejado()));
-        const ladoMenor = Math.min(video.videoWidth, video.videoHeight);
-        qualidade.textContent = Math.min(degrau.altura, ladoMenor) + "p" + degrau.quadros;
+        qualidade.textContent = nomeDaQualidade(videoLido, degrau);
         nivel = degrau.nivel;
     }
     for (let i = 0; i < barrinhas.length; i++) {
@@ -257,12 +287,38 @@ function limiteEmBytes() {
     return Number(limite.value) * 1000 * 1000;
 }
 
-function pesoOriginalDoCorte() {
-    return arquivo.size / video.duration * (fim - inicio);
+function quadroChaveDoCorteSemComprimir(lido) {
+    let partida = null;
+    for (const chave of lido.chaves) {
+        if (chave <= inicio && (partida === null || chave > partida)) {
+            partida = chave;
+        }
+    }
+    if (partida === null) {
+        return inicio;
+    }
+    if (inicio - partida > SEGUNDOS_DE_FOLGA_DO_CORTE_SEM_COMPRIMIR) {
+        return null;
+    }
+    return partida;
 }
 
-function cabeSemComprimir() {
-    return pesoOriginalDoCorte() <= limiteEmBytes() * 0.9;
+function cabeSemComprimir(lido) {
+    const partida = quadroChaveDoCorteSemComprimir(lido);
+    if (partida === null) {
+        return false;
+    }
+    const pesoDoCorte = arquivo.size / video.duration * (fim - partida);
+    return pesoDoCorte <= limiteEmBytes() * 0.9;
+}
+
+function quadrosAPular(lido, degrau) {
+    return Math.max(1, Math.round(lido.quadros / degrau.quadros));
+}
+
+function nomeDaQualidade(lido, degrau) {
+    const quadros = Math.round(lido.quadros / quadrosAPular(lido, degrau));
+    return Math.min(degrau.altura, lido.ladoMenor) + "p" + quadros;
 }
 
 function escolherDegrau(mesada) {
@@ -280,10 +336,7 @@ function escolherDegrau(mesada) {
 }
 
 function codecDesejado() {
-    if (compativel.checked) {
-        return "avc";
-    }
-    return "av1";
+    return document.querySelector('input[name="formato"]:checked').value;
 }
 
 function mesadaDaEscada(codec) {
@@ -337,9 +390,10 @@ comprimir.addEventListener("click", async function () {
 
 async function cortarEComprimir() {
     const mb = await import(ENDERECO_DA_BIBLIOTECA);
+    const original = await leituraDoVideo;
     const alvo = limiteEmBytes() * 0.95;
 
-    if (cabeSemComprimir()) {
+    if (cabeSemComprimir(original)) {
         aviso.textContent = "Cortando sem mexer na qualidade...";
         const copia = await converter(mb, null);
         if (copia !== null && copia.dados.byteLength <= alvo) {
@@ -358,9 +412,8 @@ async function cortarEComprimir() {
         throw new Error("este navegador não consegue comprimir vídeo. Use o Chrome ou o Edge atualizados.");
     }
 
-    const original = await lerOriginal(mb);
     const degrau = escolherDegrau(mesadaDaEscada(codec));
-    const pular = Math.max(1, Math.round(original.quadros / degrau.quadros));
+    const pular = quadrosAPular(original, degrau);
     const plano = {
         codec: codec,
         altura: degrau.altura,
@@ -369,7 +422,7 @@ async function cortarEComprimir() {
         somOpus: await valeTrocarSomPorOpus(mb, codec, original),
     };
 
-    let nome = Math.min(degrau.altura, original.ladoMenor) + "p" + Math.round(plano.quadros);
+    let nome = nomeDaQualidade(original, degrau);
     if (codec === "avc") {
         nome = nome + " H.264";
     } else {
@@ -386,8 +439,9 @@ async function cortarEComprimir() {
     return { dados: feito.dados, texto: nome, semSom: feito.semSom };
 }
 
-async function lerOriginal(mb) {
-    const entrada = new mb.Input({ source: new mb.BlobSource(arquivo), formats: mb.ALL_FORMATS });
+async function lerOriginal(escolhido) {
+    const mb = await import(ENDERECO_DA_BIBLIOTECA);
+    const entrada = new mb.Input({ source: new mb.BlobSource(escolhido), formats: mb.ALL_FORMATS });
     const imagem = await entrada.getPrimaryVideoTrack();
     if (imagem === null) {
         throw new Error("não consegui ler a imagem deste vídeo.");
@@ -403,7 +457,21 @@ async function lerOriginal(mb) {
         quadros: Math.min(Math.max(estatisticas.averagePacketRate, 10), 240),
         ladoMenor: Math.min(imagem.displayWidth, imagem.displayHeight),
         somPorSegundo: somPorSegundo,
+        chaves: await lerQuadrosChave(mb, imagem),
     };
+}
+
+async function lerQuadrosChave(mb, imagem) {
+    const leitor = new mb.EncodedPacketSink(imagem);
+    const chaves = [];
+    let pacote = await leitor.getFirstPacket({ metadataOnly: true });
+    while (pacote !== null) {
+        if (pacote.type === "key") {
+            chaves.push(pacote.timestamp);
+        }
+        pacote = await leitor.getNextKeyPacket(pacote, { metadataOnly: true });
+    }
+    return chaves;
 }
 
 async function valeTrocarSomPorOpus(mb, codec, original) {
@@ -616,7 +684,7 @@ async function converter(mb, plano, taxa, trecho) {
     }
 
     if (plano === null) {
-        opcoes.copy = { mode: "forced", boundaryTolerance: 3 };
+        opcoes.copy = { mode: "forced", boundaryTolerance: SEGUNDOS_DE_FOLGA_DO_CORTE_SEM_COMPRIMIR };
     } else {
         opcoes.video = function (faixa) {
             const largura = faixa.displayWidth;

@@ -7,25 +7,45 @@
     <link rel="icon" href="icone-32.png" sizes="32x32">
     <link rel="icon" href="icone.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icone-180.png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5.2.5/index.css">
     <link rel="stylesheet" href="estilo.css">
 </head>
 <body>
+<nav class="barra">
+    <div class="barra-miolo">
+        <span class="marca"><img src="icone.svg" alt="" width="22" height="22"> Atena</span>
+        <label for="escolher" class="botao-pequeno">Escolher vídeo</label>
+    </div>
+</nav>
+
 <main>
-    <header>
-        <h1>Atena</h1>
+    <header class="vitrine">
         <p class="sobrenome">Cortador de clipes</p>
-        <p class="subtitulo">Corte o melhor momento e deixe no tamanho certo.</p>
+        <h1>Corte o melhor momento.<br><span class="gradiente">No tamanho certo.</span></h1>
+        <p class="subtitulo">Marque o trecho, escolha o limite em MB e baixe o clipe pronto para mandar.</p>
+        <div class="linha centro">
+            <input type="file" id="escolher" accept="video/*">
+            <label for="escolher" class="botao principal grande">Escolher vídeo</label>
+        </div>
+        <p id="info"></p>
     </header>
 
-    <div class="linha">
-        <input type="file" id="escolher" accept="video/*">
-        <label for="escolher" class="botao">Escolher vídeo</label>
-        <p id="info"></p>
+    <div class="palco">
+        <video id="video" controls></video>
+        <label for="escolher" class="palco-vazio">
+            <span class="icone-palco" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="28" height="28"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>
+            </span>
+            <strong>Escolha um vídeo para começar</strong>
+            <span>Ele aparece aqui para você marcar o trecho.</span>
+        </label>
     </div>
 
-    <video id="video" controls></video>
-
     <section class="cartao">
+        <div class="cabeca">
+            <span class="passo">1</span>
+            <h2>Marque o trecho</h2>
+        </div>
         <div class="linha">
             <button id="marcarInicio">Marcar início</button>
             <button id="marcarFim">Marcar fim</button>
@@ -68,15 +88,39 @@
     </section>
 
     <section class="cartao">
-        <div class="linha">
-            <label class="campo">Limite (MB) <input type="number" id="limite" value="20" min="1"></label>
-            <button id="comprimir" class="principal">Cortar e comprimir</button>
+        <div class="cabeca">
+            <span class="passo">2</span>
+            <h2>Deixe no tamanho certo</h2>
+            <label class="campo-limite">
+                <span>Limite</span>
+                <span class="caixa-numero"><input type="number" id="limite" value="20" min="1"><span>MB</span></span>
+            </label>
         </div>
-        <label class="opcao"><input type="checkbox" id="compativel"> Compatível com iPhone antigo (qualidade menor)</label>
+        <div class="grupo" role="radiogroup" aria-labelledby="tituloFormato">
+            <span class="grupo-titulo" id="tituloFormato">Formato</span>
+            <div class="formatos">
+                <label class="formato">
+                    <input type="radio" name="formato" value="av1" checked>
+                    <strong>AV1</strong>
+                    <span>Imagem melhor no mesmo tamanho de arquivo.</span>
+                </label>
+                <label class="formato">
+                    <input type="radio" name="formato" value="avc">
+                    <strong>H.264</strong>
+                    <span>Toca em qualquer aparelho, até no WhatsApp e no Discord do iPhone.</span>
+                </label>
+            </div>
+        </div>
+        <button id="comprimir" class="principal grande largo">Cortar e comprimir</button>
         <progress id="progresso" value="0" max="1" hidden></progress>
         <p id="aviso"></p>
         <a id="baixar" hidden>Baixar o clipe</a>
     </section>
+
+    <footer class="rodape">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V8a3 3 0 0 0-6 0z" fill="currentColor"/></svg>
+        Seu vídeo não sai do seu computador. Tudo acontece no seu navegador.
+    </footer>
 </main>
 
 <script src="script.js"></script>

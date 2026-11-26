@@ -40,10 +40,18 @@ const QUANTIZER_MAXIMO = 252;
 const DEGRAU_DO_QUANTIZER = 4;
 const BITRATE_DO_SOM_OPUS = 96000;
 const SEGUNDOS_DE_FOLGA_DO_CORTE_SEM_COMPRIMIR = 3;
+const ENDERECO_DO_FFMPEG = "./ffmpeg/index.js";
+const NUCLEO_COM_THREADS = "https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.10/dist/esm/";
+const NUCLEO_SEM_THREADS = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/";
+const TAMANHO_DO_NUCLEO = 32 * 1000 * 1000;
+const PRESET_DO_X264 = "faster";
+const THREADS_DO_X264 = "4";
+const SOBRA_DO_ARQUIVO = 100 * 1000;
 
 let leituraDoVideo = null;
 let videoLido = null;
 let lendoVideo = false;
+let carregandoX264 = null;
 
 escolher.addEventListener("change", function () {
     if (escolher.files.length === 0) {
@@ -344,7 +352,7 @@ function mesadaDaEscada(codec) {
     if (codec === "av1") {
         return mesada * 2;
     }
-    return mesada * 0.6;
+    return mesada;
 }
 
 comprimir.addEventListener("click", async function () {
@@ -401,6 +409,15 @@ async function cortarEComprimir() {
         }
     }
 
+    let semX264 = false;
+    if (codecDesejado() === "avc") {
+        const nucleo = await carregarX264();
+        if (nucleo !== null) {
+            return await comprimirComX264(nucleo, original);
+        }
+        semX264 = true;
+    }
+
     if (typeof VideoEncoder === "undefined") {
         throw new Error("este navegador não consegue comprimir vídeo. Use o Chrome ou o Edge atualizados.");
     }
@@ -423,7 +440,9 @@ async function cortarEComprimir() {
     };
 
     let nome = nomeDaQualidade(original, degrau);
-    if (codec === "avc") {
+    if (codec === "avc" && semX264) {
+        nome = nome + " H.264 (compressor do navegador)";
+    } else if (codec === "avc") {
         nome = nome + " H.264";
     } else {
         nome = nome + " AV1";
@@ -456,6 +475,7 @@ async function lerOriginal(escolhido) {
     return {
         quadros: Math.min(Math.max(estatisticas.averagePacketRate, 10), 240),
         ladoMenor: Math.min(imagem.displayWidth, imagem.displayHeight),
+        deitado: imagem.displayWidth >= imagem.displayHeight,
         somPorSegundo: somPorSegundo,
         chaves: await lerQuadrosChave(mb, imagem),
     };
@@ -755,4 +775,153 @@ async function converter(mb, plano, taxa, trecho) {
     }
     await conversao.execute();
     return { dados: saida.target.buffer, semSom: perdeuSom };
+}
+
+function carregarX264() {
+    if (carregandoX264 === null) {
+        carregandoX264 = abrirX264().catch(function (erro) {
+            console.error(erro);
+            carregandoX264 = null;
+            return null;
+        });
+    }
+    return carregandoX264;
+}
+
+function esquecerX264(nucleo) {
+    try {
+        nucleo.ff.terminate();
+    } catch (erro) {
+        console.error(erro);
+    }
+    carregandoX264 = null;
+}
+
+async function abrirX264() {
+    const comThreads = window.crossOriginIsolated === true;
+    const pasta = comThreads ? NUCLEO_COM_THREADS : NUCLEO_SEM_THREADS;
+    aviso.textContent = "Baixando o compressor (32 MB, só na primeira vez)...";
+    progresso.value = 0;
+    const { FFmpeg } = await import(ENDERECO_DO_FFMPEG);
+    const enderecos = {
+        coreURL: await baixarComoBlob(pasta + "ffmpeg-core.js", "text/javascript", false),
+        wasmURL: await baixarComoBlob(pasta + "ffmpeg-core.wasm", "application/wasm", true),
+    };
+    if (comThreads) {
+        enderecos.workerURL = await baixarComoBlob(pasta + "ffmpeg-core.worker.js", "text/javascript", false);
+    }
+    const ff = new FFmpeg();
+    await ff.load(enderecos);
+    return { ff: ff, comThreads: comThreads };
+}
+
+async function baixarComoBlob(endereco, tipo, mostrarProgresso) {
+    const resposta = await fetch(endereco);
+    if (!resposta.ok) {
+        throw new Error("não consegui baixar " + endereco);
+    }
+    const leitor = resposta.body.getReader();
+    const pedacos = [];
+    let baixado = 0;
+    while (true) {
+        const { done, value } = await leitor.read();
+        if (done) {
+            break;
+        }
+        pedacos.push(value);
+        baixado += value.byteLength;
+        if (mostrarProgresso) {
+            progresso.value = Math.min(baixado / TAMANHO_DO_NUCLEO, 1);
+        }
+    }
+    return URL.createObjectURL(new Blob(pedacos, { type: tipo }));
+}
+
+async function comprimirComX264(nucleo, original) {
+    const ff = nucleo.ff;
+    const duracao = fim - inicio;
+    const degrau = escolherDegrau(mesadaDaEscada("avc"));
+    const pular = quadrosAPular(original, degrau);
+    const quadros = original.quadros / pular;
+    const nome = nomeDaQualidade(original, degrau) + " H.264";
+    const somEmBytes = original.somPorSegundo * duracao;
+    const mira = limiteEmBytes() * 0.92 - somEmBytes - SOBRA_DO_ARQUIVO;
+    let bitrate = Math.floor(mira * 8 / duracao);
+    if (bitrate < 150000) {
+        throw new Error("o corte é longo demais para esse limite. Faça um corte menor ou aumente o limite.");
+    }
+
+    const filtro = [];
+    if (pular > 1) {
+        filtro.push("fps=" + quadros.toFixed(5));
+    }
+    if (original.ladoMenor > degrau.altura) {
+        if (original.deitado) {
+            filtro.push("scale=-2:" + degrau.altura + ":flags=lanczos");
+        } else {
+            filtro.push("scale=" + degrau.altura + ":-2:flags=lanczos");
+        }
+    }
+    filtro.push("format=yuv420p");
+
+    const threads = nucleo.comThreads ? ["-threads", THREADS_DO_X264] : [];
+    const entrada = ["-ss", String(inicio), "-t", String(duracao), ...threads, "-i", "/in/" + arquivo.name];
+    const imagem = [
+        "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-map_chapters", "-1",
+        "-vf", filtro.join(","),
+        "-c:v", "libx264", ...threads, "-preset", PRESET_DO_X264, "-profile:v", "high",
+        "-level:v", quadros > 31 ? "4.2" : "4.1",
+        "-g", String(Math.round(quadros * SEGUNDOS_ENTRE_QUADROS_CHAVE)),
+    ];
+    const saida = ["-c:a", "copy", "-movflags", "+faststart", "out.mp4"];
+
+    let demora = "";
+    if (!nucleo.comThreads) {
+        demora = " Neste navegador demora mais, uns 3 min para cada 30 s.";
+    }
+
+    function acompanhar({ message }) {
+        const achado = /time=(\d+):(\d+):([\d.]+)/.exec(message);
+        if (achado !== null) {
+            const segundos = Number(achado[1]) * 3600 + Number(achado[2]) * 60 + Number(achado[3]);
+            progresso.value = Math.min(segundos / duracao, 1);
+        }
+    }
+
+    let montado = false;
+    ff.on("log", acompanhar);
+    try {
+        await ff.createDir("/in");
+        await ff.mount("WORKERFS", { files: [arquivo] }, "/in");
+        montado = true;
+
+        for (let tentativa = 1; tentativa <= 3; tentativa++) {
+            if (tentativa === 1) {
+                aviso.textContent = "Comprimindo em " + nome + "..." + demora;
+            } else {
+                aviso.textContent = "Comprimindo em " + nome + " (ajuste " + tentativa + " de 3)..." + demora;
+            }
+            progresso.value = 0;
+            const codigo = await ff.exec([...entrada, ...imagem, "-b:v", String(bitrate), ...saida]);
+            if (codigo !== 0) {
+                throw new Error("o compressor parou no meio (código " + codigo + "). Veja o console.");
+            }
+            const dados = await ff.readFile("out.mp4");
+            await ff.deleteFile("out.mp4");
+            if (dados.byteLength <= limiteEmBytes() * 0.95) {
+                return { dados: dados, texto: nome, semSom: false };
+            }
+            bitrate = Math.floor(bitrate * mira / (dados.byteLength - somEmBytes));
+        }
+        throw new Error("não consegui deixar o clipe abaixo do limite. Faça um corte menor.");
+    } catch (erro) {
+        esquecerX264(nucleo);
+        throw erro;
+    } finally {
+        ff.off("log", acompanhar);
+        if (montado && carregandoX264 !== null) {
+            await ff.unmount("/in");
+            await ff.deleteDir("/in");
+        }
+    }
 }

@@ -21,7 +21,7 @@ Cortador de clipes que roda no navegador. Escolha um vídeo, marque o melhor mom
 - **Se o trecho já cabe no limite**, ela só corta, sem mexer na qualidade. Para isso, o vídeo precisa ter um quadro-chave (um ponto em que a imagem recomeça do zero) até 3 segundos antes do início que você marcou. A plaquinha **Qualidade** mostra **Original** quando dá.
 - **Se não cabe**, ela comprime com a mesma qualidade do começo ao fim, sem borrar as cenas de ação. Antes, comprime uns pedacinhos do trecho para medir o vídeo e acertar o tamanho já na primeira vez.
 - **Escolhe sozinha a resolução e os quadros por segundo.** Clipes curtos saem em 1080p com 60 quadros por segundo. Nos mais longos ela passa para 30 quadros por segundo, que deixam cada imagem mais nítida no mesmo tamanho de arquivo. Só em trechos bem longos ela desce para 720p, 480p ou 360p. Ela nunca passa da resolução nem dos quadros por segundo do vídeo original. A plaquinha **Qualidade** mostra a previsão antes de você clicar.
-- **Você escolhe o formato.** O **AV1** entrega imagem melhor no mesmo tamanho de arquivo. O **H.264** toca em qualquer aparelho, até no WhatsApp e no Discord do iPhone, com imagem um pouco pior no mesmo tamanho. Se o navegador não conseguir gerar AV1, ela usa H.264, e o botão de baixar mostra qual saiu.
+- **Você escolhe o formato.** O **AV1** entrega imagem melhor no mesmo tamanho de arquivo. O **H.264** toca em qualquer aparelho, até no WhatsApp e no Discord do iPhone. Ele usa o x264, o mesmo compressor dos programas de edição, então as cenas de ação não pixelam. Na primeira vez ela baixa esse compressor (32 MB), e comprimir 30 s leva cerca de 1 minuto. Se o navegador não conseguir gerar AV1, ela usa H.264, e o botão de baixar mostra qual saiu.
 - **Deixa o som mais leve.** Junto com o AV1, o som vai em Opus, que soa igual e ocupa metade do espaço. O que sobra vai para a imagem. Com **H.264**, o som fica como no original.
 
 ## Seu vídeo não sai do seu computador
@@ -41,9 +41,13 @@ Feita para navegadores baseados no Chromium (Chrome, Edge, Vivaldi, Brave), atua
 | `script.js` | o que acontece quando você clica |
 | `icone.svg`, `icone-32.png`, `icone-180.png` | o ícone da aba e da tela inicial do celular |
 | `tela.png` | a imagem deste README |
+| `ffmpeg/` | a parte do ffmpeg.wasm que precisa vir do próprio site |
+| `coi-serviceworker.min.js` | libera o navegador para comprimir o H.264 usando vários núcleos do processador |
 
 ## Feito com
 
 - HTML, CSS e JavaScript, sem framework.
 - [Mediabunny](https://mediabunny.dev/) para cortar e comprimir o vídeo (licença MPL-2.0).
+- [ffmpeg.wasm](https://ffmpegwasm.netlify.app/) com x264 para o H.264 (licenças MIT e GPL-2.0).
+- [coi-serviceworker](https://github.com/gzuidhof/coi-serviceworker) (licença MIT).
 - [Inter](https://rsms.me/inter/) como fonte (licença OFL-1.1).
